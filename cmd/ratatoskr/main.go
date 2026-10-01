@@ -17,6 +17,9 @@ import (
 	"github.com/MindTooth/ratatoskr/internal/config"
 	"github.com/MindTooth/ratatoskr/internal/service"
 	"github.com/MindTooth/ratatoskr/pkg/catalog"
+	"github.com/MindTooth/ratatoskr/pkg/cluster"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
 )
 
 func main() {
@@ -29,6 +32,8 @@ func main() {
 		serve(os.Args[2:])
 	case "refresh":
 		refresh(os.Args[2:])
+	case "discover":
+		discover()
 	case "query":
 		query(os.Args[2:])
 	case "channel-query":
@@ -173,6 +178,28 @@ func refresh(args []string) {
 		fmt.Println(source.ID)
 	}
 }
+func discover() {
+	cfg, err := rest.InClusterConfig()
+	if err != nil {
+		slog.Error("load in-cluster configuration", "error", err)
+		os.Exit(1)
+	}
+	client, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		slog.Error("create Kubernetes client", "error", err)
+		os.Exit(1)
+	}
+	subscriptions, err := cluster.Discover(context.Background(), client)
+	if err != nil {
+		slog.Error("discover subscriptions", "error", err)
+		os.Exit(1)
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(subscriptions); err != nil {
+		slog.Error("write discovery response", "error", err)
+		os.Exit(1)
+	}
+}
+
 func query(args []string) {
 	fs := flag.NewFlagSet("query", flag.ExitOnError)
 	imageRef := fs.String("image", "", "catalog image")
@@ -255,5 +282,5 @@ func writeReleases(values []string) {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: ratatoskr {serve|refresh|query|channel-query|version}")
+	fmt.Fprintln(os.Stderr, "usage: ratatoskr {serve|refresh|discover|query|channel-query|version}")
 }
