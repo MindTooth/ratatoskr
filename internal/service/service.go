@@ -54,6 +54,7 @@ type Service struct {
 	queued              map[string]bool
 	running             map[string]bool
 	refreshSem          chan struct{}
+	catalogGeneration   uint64
 	httpClient          *http.Client
 	runContext          context.Context
 	configChanged       chan struct{}
@@ -96,34 +97,40 @@ func (s *Service) Refresh(ctx context.Context, source catalog.Source) error {
 		return ctx.Err()
 	}
 	defer func() { <-s.refreshSem }()
-	return s.refresh(ctx, source)
+	_, err := s.refresh(ctx, source)
+	return err
 }
 
 // refresh builds a private snapshot and publishes it only after a complete read.
 // Callers hold refreshSem so an older catalog refresh cannot replace a newer one.
-func (s *Service) refresh(ctx context.Context, source catalog.Source) error {
+func (s *Service) refresh(ctx context.Context, source catalog.Source) (uint64, error) {
 	slog.Debug("refresh catalog", "source", source.ID, "image", source.Image)
 	s.markAttempt(source)
 	s.mu.RLock()
 	r := catalog.Reader{SignaturePolicy: s.cfg.SignaturePolicy, ParseConcurrency: s.cfg.ParseConcurrency}
+	generation := s.catalogGeneration
 	s.mu.RUnlock()
-	snap, err := s.readCatalog(ctx, source, r)
+	var snap *catalog.Snapshot
+	err := ctx.Err()
+	if err == nil {
+		snap, err = s.readCatalog(ctx, source, r)
+	}
 	if err == nil {
 		err = ctx.Err()
 	}
 	if err != nil {
-		s.markFailure(source, err)
-		return err
+		s.markFailure(source, generation, err)
+		return generation, err
 	}
 	s.mu.Lock()
-	if s.currentSourceLocked(source) {
+	if generation == s.catalogGeneration && s.currentSourceLocked(source) {
 		snap.GeneratedAt = s.now().UTC()
 		s.snapshots[source.ID] = snap
 		s.statuses[source.ID] = SourceStatus{Source: source, Available: true, Refreshing: s.running[source.ID] || s.queued[source.ID], LastAttempt: s.statuses[source.ID].LastAttempt, LastSuccess: snap.GeneratedAt, PackageCount: len(snap.Packages)}
 	}
 	s.mu.Unlock()
 	slog.Debug("catalog refreshed", "source", source.ID, "packages", len(snap.Packages), "generatedAt", snap.GeneratedAt)
-	return nil
+	return generation, nil
 }
 
 func (s *Service) markAttempt(source catalog.Source) {
@@ -138,9 +145,9 @@ func (s *Service) markAttempt(source catalog.Source) {
 	s.mu.Unlock()
 }
 
-func (s *Service) markFailure(source catalog.Source, err error) {
+func (s *Service) markFailure(source catalog.Source, generation uint64, err error) {
 	s.mu.Lock()
-	if !s.currentSourceLocked(source) {
+	if generation != s.catalogGeneration || !s.currentSourceLocked(source) {
 		s.mu.Unlock()
 		return
 	}
@@ -192,6 +199,9 @@ func (s *Service) Reload(cfg Config) {
 	previous := s.cfg
 	changed := sourceChanges(previous, cfg)
 	refreshAll := previous.SignaturePolicy != cfg.SignaturePolicy || previous.ParseConcurrency != cfg.ParseConcurrency
+	if refreshAll {
+		s.catalogGeneration++
+	}
 	s.cfg = cfg
 	if previous.OpenShiftGraphURL != cfg.OpenShiftGraphURL {
 		clear(s.openShiftSnapshots)
@@ -326,7 +336,8 @@ func (s *Service) refreshQueued(parent context.Context, id string) {
 	if timeout > 0 {
 		ctx, cancel = context.WithTimeout(parent, timeout)
 	}
-	if err := s.refresh(ctx, source); err != nil {
+	generation, err := s.refresh(ctx, source)
+	if err != nil {
 		slog.Error("refresh catalog", "source", source.ID, "error", err)
 	}
 	cancel()
@@ -337,9 +348,9 @@ func (s *Service) refreshQueued(parent context.Context, id string) {
 		status.Refreshing = false
 		s.statuses[id] = status
 	}
-	changed := !s.currentSourceLocked(source)
+	changed := generation != s.catalogGeneration || !s.currentSourceLocked(source)
 	s.mu.Unlock()
-	if changed {
+	if changed && parent.Err() == nil {
 		s.QueueRefresh(id)
 	}
 }

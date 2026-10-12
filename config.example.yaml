@@ -15,6 +15,7 @@ parseConcurrency: 2
 # a Secret; callers send its value as an Authorization: Bearer token.
 # refreshTokenFile: /var/run/olm-refresh-token/token
 # Mount an explicit containers/image policy in production.
+# Changing this path on reload refreshes catalogs after any active read finishes.
 # signaturePolicy: /etc/containers/policy.json
 # linux/amd64 is the default for every generated and explicit source.
 # platform: linux/amd64

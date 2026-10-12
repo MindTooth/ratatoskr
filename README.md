@@ -93,6 +93,8 @@ The server automatically reloads a changed configuration file every five
 seconds, including Kubernetes ConfigMap mounts. Invalid updates leave the
 last valid configuration active. Set `--config-reload-interval 0` to disable
 this behavior; changing `listenAddress` still requires a restart.
+Changing `signaturePolicy` schedules a new catalog read; an active read using the
+previous policy cannot publish its result after reload.
 
 For a one-off query, pass the same selection explicitly:
 

@@ -122,8 +122,14 @@ on every lookup and retain only successful, complete results for the exact chann
 architecture, installed version, and lag. A discovery failure can serve that exact
 previous result while it is within `maxSnapshotAge`.
 
-The policy applies at each read, including after a live policy reload. A snapshot
-is acceptable through its maximum age; older or missing data returns `503`.
+Changing `signaturePolicy` or `parseConcurrency` queues a catalog refresh. An
+active read using the previous configuration cannot publish a snapshot or update
+failure status; it is followed by a read using the latest configuration, unless
+the service is shutting down. Already published snapshots retain their original
+generation time until a new read succeeds.
+
+The maximum age policy applies at each read, including after a live policy reload.
+A snapshot is acceptable through its maximum age; older or missing data returns `503`.
 Failed refreshes never renew the timestamp. Successful empty datasets remain valid.
 Catalog status reports generation time (`lastSuccess`), `snapshotAgeSeconds`,
 `stale`, and policy-aware `available`; readiness requires at least one acceptable
