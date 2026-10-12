@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: MindTooth/setup@3b9324fefd7de5578c535f0e8fe525ba7a2fb834 # fix/prefer-locked-pnpm
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
           cache: true
           require-lockfile: true
