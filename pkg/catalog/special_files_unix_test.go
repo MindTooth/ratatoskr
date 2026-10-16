@@ -73,7 +73,8 @@ func TestReadRejectsFIFO(t *testing.T) {
 							_ = unix.Close(fd)
 						}
 						select {
-						case <-done:
+						case err := <-done:
+							_ = err // The timeout path only waits for the goroutine to finish.
 						case <-time.After(time.Second):
 						}
 						t.Fatal("catalog FIFO read blocked without a writer")
