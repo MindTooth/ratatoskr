@@ -6,12 +6,6 @@ module.exports = {
     [
       '@semantic-release/commit-analyzer',
       {
-        // Keep semantic versioning correct when a custom rule also matches.
-        releaseRules: [
-          { breaking: true, release: 'major' },
-          { type: 'build', release: 'patch' },
-          { type: 'refactor', release: 'patch' },
-        ],
         preset: 'conventionalcommits',
       },
     ],
