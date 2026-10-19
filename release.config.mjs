@@ -1,17 +1,11 @@
 /** @type {import('semantic-release').GlobalConfig} */
-module.exports = {
+export default {
   branches: ['master'],
   tagFormat: 'v${version}',
   plugins: [
     [
       '@semantic-release/commit-analyzer',
       {
-        // Keep semantic versioning correct when a custom rule also matches.
-        releaseRules: [
-          { breaking: true, release: 'major' },
-          { type: 'build', release: 'patch' },
-          { type: 'refactor', release: 'patch' },
-        ],
         preset: 'conventionalcommits',
       },
     ],
@@ -20,8 +14,8 @@ module.exports = {
       {
         preset: 'conventionalcommits',
         presetConfig: {
-          // Map release-triggering Conventional Commit types to release-note
-          // categories. Non-user-facing types remain hidden.
+          // Control changelog visibility independently of release triggers.
+          // Non-user-facing types remain hidden.
           types: [
             { type: 'feat', section: 'Added', hidden: false },
             { type: 'fix', section: 'Fixed', hidden: false },

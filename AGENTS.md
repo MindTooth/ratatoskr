@@ -136,12 +136,15 @@ Do not claim a check passed unless it was actually run.
   published to GitHub Releases. The Node/pnpm files are release tooling only.
 - When changing release behavior, inspect `release.config.cjs`, `package.json`,
   and `.github/workflows/release.yaml` together.
-- Use Angular-style Conventional Commits and PR titles:
+- Use Conventional Commits and PR titles:
   `type(scope): description` or `type: description`.
 - Supported types include `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`,
-  `refactor`, `revert`, `style`, and `test`. Project-specific semantic-release
-  rules make `build` and `refactor` patch releases. When changing release rules,
-  keep release triggering and release-note visibility aligned.
+  `refactor`, `revert`, `style`, and `test`. Follow the default Conventional
+  Commits release rules: `feat` triggers minor, `fix` and `perf` trigger patch,
+  and breaking changes trigger major releases. Other types do not trigger releases
+  by default. Select commit types from actual changes, not from AI-generated
+  suggestions or desired release outcomes. Keep release triggering and
+  release-note visibility separate.
 - Keep commits and PRs tightly scoped. Before finishing, inspect the diff,
   remove temporary artifacts, and report only verification actually performed.
 
