@@ -14,8 +14,8 @@ module.exports = {
       {
         preset: 'conventionalcommits',
         presetConfig: {
-          // Map release-triggering Conventional Commit types to release-note
-          // categories. Non-user-facing types remain hidden.
+          // Control changelog visibility independently of release triggers.
+          // Non-user-facing types remain hidden.
           types: [
             { type: 'feat', section: 'Added', hidden: false },
             { type: 'fix', section: 'Fixed', hidden: false },
