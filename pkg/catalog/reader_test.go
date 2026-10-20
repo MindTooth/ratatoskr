@@ -3,6 +3,7 @@ package catalog_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -13,6 +14,97 @@ import (
 
 	"github.com/MindTooth/ratatoskr/pkg/catalog"
 )
+
+func TestReadFSSkipRanges(t *testing.T) {
+	const metadata = `
+{"schema":"olm.package","name":"example","defaultChannel":"stable"}
+{"schema":"olm.bundle","package":"example","name":"current","properties":[{"type":"olm.package","value":{"version":"1.0.0"}}]}
+{"schema":"olm.bundle","package":"example","name":"target","properties":[{"type":"olm.package","value":{"version":"3.0.0"}}]}
+`
+	channelJSON := func(expr string) string {
+		return fmt.Sprintf(`{"schema":"olm.channel","package":"example","name":"stable","entries":[{"name":"current"},{"name":"target","replaces":"current","skipRange":%q}]}`, expr)
+	}
+	for _, tc := range []struct {
+		name, expr string
+		wantErr    bool
+	}{
+		{"absent", "", false},
+		{"empty", "", false},
+		{"bounded", ">=1.0.0 <2.0.0", false},
+		{"prerelease bounds", ">=1.0.0-0 <2.0.0-0", false},
+		{"OR", ">=1.0.0 <1.2.0 || >=1.3.0 <2.0.0", false},
+		{"wildcard", "1.2.x", false},
+		{"whitespace", " \t", true},
+		{"caret", "^1.0.0", true},
+		{"tilde", "~1.0.0", true},
+		{"incomplete", ">=", true},
+		{"comma", ">=1.0.0, <2.0.0", true},
+		{"leading OR", "|| >=1.0.0", true},
+		{"trailing OR", ">=1.0.0 ||", true},
+		{"empty OR branch", ">=1.0.0 || || <2.0.0", true},
+		{"discarded x branch", ">=1.0.0 || x || <2.0.0", true},
+		{"discarded pipe branch", ">=1.0.0 || | || <2.0.0", true},
+	} {
+		for _, format := range []string{"json", "yaml"} {
+			for _, concurrency := range []int{1, 4} {
+				t.Run(fmt.Sprintf("%s/%s/workers=%d", tc.name, format, concurrency), func(t *testing.T) {
+					channel := channelJSON(tc.expr)
+					if tc.name == "absent" {
+						channel = strings.ReplaceAll(channel, `,"skipRange":""`, "")
+					}
+					if format == "yaml" {
+						channel = fmt.Sprintf("schema: olm.channel\npackage: example\nname: stable\nentries:\n  - name: current\n  - name: target\n    replaces: current\n    skipRange: %q\n", tc.expr)
+						if tc.name == "absent" {
+							channel = strings.ReplaceAll(channel, "    skipRange: \"\"\n", "")
+						}
+					}
+					configs := fstest.MapFS{
+						"metadata.json":     {Data: []byte(metadata)},
+						"channel." + format: {Data: []byte(channel)},
+					}
+					snapshot, err := (catalog.Reader{ParseConcurrency: concurrency}).ReadFS(context.Background(), catalog.Source{}, configs)
+					if tc.wantErr {
+						if err == nil || snapshot != nil {
+							t.Fatalf("ReadFS = %v, %v; want nil snapshot and invalid skipRange error", snapshot, err)
+						}
+						for _, context := range []string{"skipRange", "example", "stable", "target"} {
+							if !strings.Contains(err.Error(), context) {
+								t.Fatalf("error %q lacks %q context", err, context)
+							}
+						}
+						return
+					}
+					if err != nil || snapshot == nil {
+						t.Fatalf("ReadFS = %v, %v; want successful catalog", snapshot, err)
+					}
+					if got := snapshot.Packages["example"].Channels["stable"].Entries[1].SkipRange; got != tc.expr {
+						t.Fatalf("SkipRange = %q, want raw %q", got, tc.expr)
+					}
+				})
+			}
+		}
+	}
+
+	for _, concurrency := range []int{1, 4} {
+		valid, invalid := channelJSON(">=1.0.0 <2.0.0"), channelJSON("^1.0.0")
+		for name, configs := range map[string]fstest.MapFS{
+			"invalid then valid": {"catalog.json": {Data: []byte(metadata + invalid + "\n" + valid)}},
+			"valid then invalid": {"catalog.json": {Data: []byte(metadata + valid + "\n" + invalid)}},
+			"multiple files": {
+				"metadata.json": {Data: []byte(metadata)},
+				"invalid.json":  {Data: []byte(invalid)},
+				"valid.json":    {Data: []byte(valid)},
+			},
+		} {
+			t.Run(fmt.Sprintf("duplicates/%s/workers=%d", name, concurrency), func(t *testing.T) {
+				snapshot, err := (catalog.Reader{ParseConcurrency: concurrency}).ReadFS(context.Background(), catalog.Source{}, configs)
+				if err == nil || snapshot != nil || !strings.Contains(err.Error(), "skipRange") {
+					t.Fatalf("ReadFS = %v, %v; want nil snapshot and invalid skipRange error", snapshot, err)
+				}
+			})
+		}
+	}
+}
 
 // TestReadFSAndResolve verifies catalog normalization and graph queries through the
 // public API without registry, server, or cluster access.

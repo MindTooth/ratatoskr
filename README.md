@@ -276,6 +276,15 @@ terminal bundles, and `ChannelReleases` resolves graph-valid channel transitions
 `VersionUpdates` includes the current version and graph successors, defaults to
 the package's default channel, and retains the existing version ordering.
 
+Both readers validate nonempty `skipRange` expressions with the OLM-compatible
+`github.com/blang/semver/v4` parser and reject unsafe empty OR branches.
+Invalid ranges fail the entire read without returning a partial snapshot;
+the service retains its last known-good snapshot under the existing age policy.
+Use bounded ranges such as `>=1.0.0 <2.0.0`: this includes `1.0.0` and
+`2.0.0-rc.1`, but excludes `1.0.0-rc.1` and `2.0.0`. Caret (`^`) and tilde (`~`)
+constraints are unsupported. Version updates and channel transitions use the
+same range semantics, including prerelease precedence and ignoring build metadata.
+
 Both readers apply `olm.deprecations` records after all metadata files have
 loaded, regardless of record or file order. Bundle and channel references set
 `Bundle.Deprecated` and `Channel.Deprecated` within the named package. Invalid

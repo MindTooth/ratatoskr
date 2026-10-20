@@ -80,10 +80,17 @@ func TestCatalogLastKnownGoodLifecycle(t *testing.T) {
 		bodies[route] = res.Body.String()
 	}
 	now = now.Add(30 * time.Minute)
-	for _, failure := range []string{"partial parse", "missing bundle", "invalid deprecation", "special file", "timeout"} {
+	for _, failure := range []string{"partial parse", "missing bundle", "invalid deprecation", "invalid skipRange", "unsafe skipRange OR", "special file", "timeout"} {
 		t.Run(failure, func(t *testing.T) {
 			ctx := context.Background()
 			switch failure {
+			case "invalid skipRange", "unsafe skipRange OR":
+				configs = catalogFixture("1.2.0")
+				expr := "^1.0.0"
+				if failure == "unsafe skipRange OR" {
+					expr = ">=1.0.0 || || <2.0.0"
+				}
+				configs["catalog.json"].Data = []byte(strings.ReplaceAll(string(configs["catalog.json"].Data), `"replaces":"v1"`, fmt.Sprintf(`"replaces":"v1","skipRange":%q`, expr)))
 			case "special file":
 				configs = fstest.MapFS{"catalog.json": {Mode: fs.ModeNamedPipe}}
 			case "partial parse":
@@ -105,6 +112,9 @@ func TestCatalogLastKnownGoodLifecycle(t *testing.T) {
 			}
 			if svc.snapshots[source.ID] != previous || svc.statuses[source.ID].LastSuccess != generatedAt {
 				t.Fatal("failed refresh replaced data or renewed its age")
+			}
+			if previous.GeneratedAt != generatedAt || svc.statuses[source.ID].LastError == "" {
+				t.Fatal("failed refresh renewed snapshot time or omitted failure status")
 			}
 			if len(svc.refreshSem) != 0 {
 				t.Fatal("failed refresh retained the shared refresh slot")
