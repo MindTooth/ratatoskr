@@ -119,3 +119,29 @@ func TestAddChannelMetaUsesNameField(t *testing.T) {
 		t.Fatalf("channel = %#v, want stable", channel)
 	}
 }
+
+func TestReadExtractedDeprecations(t *testing.T) {
+	root := t.TempDir()
+	configs := filepath.Join(root, "configs")
+	if err := os.Mkdir(configs, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string]string{
+		"metadata.json": `{"schema":"olm.package","name":"example","defaultChannel":"stable"}
+{"schema":"olm.channel","package":"example","name":"stable","entries":[{"name":"v1"}]}
+{"schema":"olm.bundle","package":"example","name":"v1","properties":[{"type":"olm.package","value":{"version":"1.0.0"}}]}`,
+		"deprecations.json": `{"schema":"olm.deprecations","package":"example","entries":[{"reference":{"schema":"olm.channel","name":"stable"},"message":"notice"},{"reference":{"schema":"olm.bundle","name":"v1"},"message":"notice"}]}`,
+	} {
+		if err := os.WriteFile(filepath.Join(configs, name), []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot, err := (Reader{}).readExtracted(context.Background(), Source{ID: "local"}, root, "/configs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := snapshot.Packages["example"]
+	if !p.Channels["stable"].Deprecated || !p.Bundles["v1"].Deprecated {
+		t.Fatal("extracted catalog lost deprecation flags")
+	}
+}

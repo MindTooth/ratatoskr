@@ -80,7 +80,7 @@ func TestCatalogLastKnownGoodLifecycle(t *testing.T) {
 		bodies[route] = res.Body.String()
 	}
 	now = now.Add(30 * time.Minute)
-	for _, failure := range []string{"partial parse", "missing bundle", "special file", "timeout"} {
+	for _, failure := range []string{"partial parse", "missing bundle", "invalid deprecation", "special file", "timeout"} {
 		t.Run(failure, func(t *testing.T) {
 			ctx := context.Background()
 			switch failure {
@@ -89,6 +89,9 @@ func TestCatalogLastKnownGoodLifecycle(t *testing.T) {
 			case "partial parse":
 				configs = catalogFixture("1.2.0")
 				configs["catalog.json"].Data = append(configs["catalog.json"].Data, []byte("\n{")...)
+			case "invalid deprecation":
+				configs = catalogFixture("1.2.0")
+				configs["deprecations.json"] = &fstest.MapFile{Data: []byte(`{"schema":"olm.deprecations","package":"example","entries":[{"reference":{"schema":"olm.bundle","name":"missing"},"message":"notice"}]}`)}
 			case "missing bundle":
 				configs = fstest.MapFS{"catalog.json": {Data: []byte(`{"schema":"olm.package","name":"example","defaultChannel":"stable"}
 {"schema":"olm.channel","package":"example","name":"stable","entries":[{"name":"missing"}]}`)}}

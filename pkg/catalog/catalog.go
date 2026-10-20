@@ -43,6 +43,7 @@ type Package struct {
 }
 
 // Channel describes a named update graph within a package.
+// Deprecated reflects an explicit olm.channel reference in olm.deprecations.
 type Channel struct {
 	Name       string  `json:"name"`
 	Entries    []Entry `json:"entries"`
@@ -58,6 +59,7 @@ type Entry struct {
 }
 
 // Bundle contains the release metadata retained from an OLM bundle.
+// Deprecated reflects an explicit olm.bundle reference in olm.deprecations.
 type Bundle struct {
 	Name       string `json:"name"`
 	Version    string `json:"version"`
@@ -67,6 +69,9 @@ type Bundle struct {
 
 // Reader loads catalog metadata from an OCI image or a file-based catalog.
 // Its zero value uses the default image signature policy and two parsing workers.
+// Deprecation records are applied after all metadata is loaded, independent of
+// record or file order. Only channel and bundle deprecation flags are retained;
+// package-level notices and deprecation messages are not exposed.
 type Reader struct {
 	SignaturePolicy  string
 	ParseConcurrency int
@@ -164,6 +169,7 @@ func (r Reader) readFS(ctx context.Context, source Source, configs fs.FS) (*Snap
 	}
 	s := &Snapshot{Source: source, GeneratedAt: time.Now().UTC(), Packages: map[string]*Package{}}
 	var mu sync.Mutex
+	var deprecations []declcfg.Deprecation
 	concurrency := r.ParseConcurrency
 	if concurrency < 1 {
 		concurrency = 2
@@ -174,12 +180,24 @@ func (r Reader) readFS(ctx context.Context, source Source, configs fs.FS) (*Snap
 		}
 		mu.Lock()
 		defer mu.Unlock()
+		if meta.Schema == declcfg.SchemaDeprecation {
+			var record declcfg.Deprecation
+			if err := json.Unmarshal(meta.Blob, &record); err != nil {
+				return fmt.Errorf("parse deprecation: %w", err)
+			}
+			deprecations = append(deprecations, record)
+			return nil
+		}
 		return addMeta(s, meta.Schema, meta.Blob)
 	}, declcfg.WithConcurrency(concurrency))
 	if err != nil {
 		return nil, fmt.Errorf("read FBC: %w", err)
 	}
 	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("read FBC: %w", err)
+	}
+	// Apply to the final objects: later metadata must not overwrite flags.
+	if err := applyDeprecations(s, deprecations); err != nil {
 		return nil, fmt.Errorf("read FBC: %w", err)
 	}
 	for _, p := range s.Packages {
@@ -196,6 +214,58 @@ func (r Reader) readFS(ctx context.Context, source Source, configs fs.FS) (*Snap
 		}
 	}
 	return s, nil
+}
+
+// applyDeprecations resolves package-scoped references after all files are loaded.
+// Match Operator Framework reference validation without rendering full bundles.
+func applyDeprecations(s *Snapshot, records []declcfg.Deprecation) error {
+	seen := make(map[string]bool, len(records))
+	for _, record := range records {
+		if record.Package == "" {
+			return fmt.Errorf("package name must be set for deprecation record")
+		}
+		if s.Packages[record.Package] == nil {
+			return fmt.Errorf("cannot apply deprecations to an unknown package %q", record.Package)
+		}
+		if seen[record.Package] {
+			return fmt.Errorf("expected a maximum of one deprecation per package: %q", record.Package)
+		}
+		seen[record.Package] = true
+	}
+	for _, record := range records {
+		p := s.Packages[record.Package]
+		references := make(map[declcfg.PackageScopedReference]bool, len(record.Entries))
+		for _, entry := range record.Entries {
+			ref := entry.Reference
+			if references[ref] {
+				return fmt.Errorf("duplicate deprecation entry %q %q for package %q", ref.Schema, ref.Name, record.Package)
+			}
+			references[ref] = true
+			switch ref.Schema {
+			case declcfg.SchemaBundle:
+				b := p.Bundles[ref.Name]
+				if b == nil {
+					return fmt.Errorf("cannot deprecate bundle %q for package %q: bundle not found", ref.Name, record.Package)
+				}
+				b.Deprecated = true
+			case declcfg.SchemaChannel:
+				ch := p.Channels[ref.Name]
+				if ch == nil {
+					return fmt.Errorf("cannot deprecate channel %q for package %q: channel not found", ref.Name, record.Package)
+				}
+				ch.Deprecated = true
+			case declcfg.SchemaPackage:
+				if ref.Name != "" {
+					return fmt.Errorf("package name must be empty for deprecated package %q (specified %q)", record.Package, ref.Name)
+				}
+				// The compact public model retains only channel and bundle flags.
+				// Package deprecation does not imply deprecation of its children.
+			default:
+				return fmt.Errorf("cannot deprecate object %q %q for package %q: unsupported reference schema", ref.Schema, ref.Name, record.Package)
+			}
+		}
+	}
+	return nil
 }
 
 type regularCatalogFS struct{ fs.FS }
