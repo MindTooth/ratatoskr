@@ -280,8 +280,9 @@ Both readers apply `olm.deprecations` records after all metadata files have
 loaded, regardless of record or file order. Bundle and channel references set
 `Bundle.Deprecated` and `Channel.Deprecated` within the named package. Invalid
 references and duplicate records for a package fail the read without returning
-a partial snapshot. Deprecation messages and package-level deprecation state
-are not retained; a valid package-level reference does not deprecate its children.
+a partial snapshot. Pending records retain only references, and parsing and
+post-processing check cancellation between records and references. Deprecation
+messages and package-level deprecation state are not retained; a valid package-level reference does not deprecate its children.
 `VersionUpdates` excludes deprecated successor bundles but retains the current
 version and traverses deprecated intermediates in reachable mode. Channel
 transitions exclude deprecated destination channels and deprecated terminal

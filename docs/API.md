@@ -147,7 +147,8 @@ and reachable version queries can traverse deprecated intermediate bundles.
 Deprecation messages and package-level deprecation state are not exposed;
 package-level declarations do not mark child channels or bundles deprecated.
 Invalid references or duplicate deprecation records for a package fail refresh
-and preserve the last known-good snapshot.
+and preserve the last known-good snapshot. Cancellation also discards the
+in-progress snapshot, including during deprecation application.
 
 For example:
 

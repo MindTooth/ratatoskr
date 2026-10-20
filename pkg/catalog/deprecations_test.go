@@ -97,41 +97,6 @@ entries:
 						t.Error("deprecation crossed package boundary")
 					}
 				}
-				for _, tc := range []struct {
-					current, mode string
-					want          []string
-				}{
-					{"1.0.0", "direct", []string{"1.0.0"}},
-					{"1.0.0", "reachable", []string{"1.0.0", "3.0.0"}},
-					{"2.0.0", "direct", []string{"2.0.0", "3.0.0"}},
-				} {
-					got, err := p.VersionUpdates(catalog.UpdateRequest{CurrentVersion: tc.current, Mode: tc.mode})
-					if err != nil || !reflect.DeepEqual(got, tc.want) {
-						t.Fatalf("VersionUpdates(%+v) = %v, %v", tc, got, err)
-					}
-				}
-				req := catalog.ChannelUpdateRequest{CurrentChannel: "stable", CurrentBundle: "v1"}
-				got, err := p.ChannelReleases(req)
-				want := []catalog.ChannelRelease{{Channel: "stable", Bundle: "v1"}, {Channel: "healthy", Bundle: "v3"}}
-				if err != nil || !reflect.DeepEqual(got, want) {
-					t.Fatalf("ChannelReleases = %v, %v; want %v", got, err, want)
-				}
-				channels, err := p.ChannelUpdates(req)
-				if err != nil || !reflect.DeepEqual(channels, []string{"stable", "healthy"}) {
-					t.Fatalf("ChannelUpdates = %v, %v", channels, err)
-				}
-				req.CurrentChannel = "next"
-				got, err = p.ChannelReleases(req)
-				if err != nil || len(got) == 0 || got[0] != (catalog.ChannelRelease{Channel: "next", Bundle: "v1"}) {
-					t.Fatalf("deprecated current channel lost: %v, %v", got, err)
-				}
-				heads := p.ChannelHeads("retired")
-				if len(heads) != 1 || heads[0].Name != "v5" || !heads[0].Deprecated {
-					t.Fatalf("deprecated head lost: %v", heads)
-				}
-				if len(p.Channels["stable"].Entries) != 3 || len(p.Channels["healthy"].Entries) != 2 {
-					t.Fatal("deprecations changed graph entries")
-				}
 			})
 		}
 	}
@@ -212,5 +177,61 @@ func TestReadFSDeprecationsForMultiplePackages(t *testing.T) {
 	}
 	if !snapshot.Packages["example"].Bundles["v2"].Deprecated || snapshot.Packages["example"].Bundles["v3"].Deprecated || snapshot.Packages["other"].Bundles["v2"].Deprecated || !snapshot.Packages["other"].Bundles["v3"].Deprecated {
 		t.Fatal("package-scoped deprecations were mixed")
+	}
+}
+
+func TestLoadedDeprecationsPreserveResolverBehavior(t *testing.T) {
+	configs := fstest.MapFS{"catalog.json": {Data: []byte(deprecationMetadata + "\n" + deprecationRecord)}}
+	snapshot, err := (catalog.Reader{}).ReadFS(context.Background(), catalog.Source{}, configs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := snapshot.Packages["example"]
+	for _, tc := range []struct {
+		current, mode string
+		want          []string
+	}{
+		{"1.0.0", "direct", []string{"1.0.0"}},
+		{"1.0.0", "reachable", []string{"1.0.0", "3.0.0"}},
+		{"2.0.0", "direct", []string{"2.0.0", "3.0.0"}},
+	} {
+		got, err := p.VersionUpdates(catalog.UpdateRequest{CurrentVersion: tc.current, Mode: tc.mode})
+		if err != nil || !reflect.DeepEqual(got, tc.want) {
+			t.Fatalf("VersionUpdates(%+v) = %v, %v", tc, got, err)
+		}
+	}
+	req := catalog.ChannelUpdateRequest{CurrentChannel: "stable", CurrentBundle: "v1"}
+	got, err := p.ChannelReleases(req)
+	want := []catalog.ChannelRelease{{Channel: "stable", Bundle: "v1"}, {Channel: "healthy", Bundle: "v3"}}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("ChannelReleases = %v, %v; want %v", got, err, want)
+	}
+	channels, err := p.ChannelUpdates(req)
+	if err != nil || !reflect.DeepEqual(channels, []string{"stable", "healthy"}) {
+		t.Fatalf("ChannelUpdates = %v, %v", channels, err)
+	}
+	req.CurrentChannel = "next"
+	got, err = p.ChannelReleases(req)
+	if err != nil || len(got) == 0 || got[0] != (catalog.ChannelRelease{Channel: "next", Bundle: "v1"}) {
+		t.Fatalf("deprecated current channel lost: %v, %v", got, err)
+	}
+	heads := p.ChannelHeads("retired")
+	if len(heads) != 1 || heads[0].Name != "v5" || !heads[0].Deprecated {
+		t.Fatalf("deprecated head lost: %v", heads)
+	}
+	wantEntries := []catalog.Entry{{Name: "v1"}, {Name: "v2", Replaces: "v1"}, {Name: "v3", Replaces: "v2"}}
+	if !reflect.DeepEqual(p.Channels["stable"].Entries, wantEntries) {
+		t.Fatalf("deprecations changed graph entries: %+v", p.Channels["stable"].Entries)
+	}
+}
+
+func TestReadFSRejectsDuplicateDeprecationsBeforeLaterRecords(t *testing.T) {
+	const record = `{"schema":"olm.deprecations","package":"example","entries":[]}`
+	configs := fstest.MapFS{"catalog.json": {Data: []byte(record + "\n" + record + `
+{"schema":"olm.channel"}
+`)}}
+	snapshot, err := (catalog.Reader{ParseConcurrency: 1}).ReadFS(context.Background(), catalog.Source{}, configs)
+	if snapshot != nil || err == nil || !strings.Contains(err.Error(), "one deprecation per package") {
+		t.Fatalf("ReadFS = %v, %v; want immediate duplicate rejection", snapshot, err)
 	}
 }
