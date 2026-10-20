@@ -138,6 +138,18 @@ only for the extra data needed:
 - `bundles` returns bundle names, versions, images, and deprecation state.
 - `graph` returns each channel's declared OLM edges.
 
+Channel and bundle `deprecated` flags reflect package-scoped `olm.deprecations`
+records in the loaded catalog, independent of file and record order. Inspection
+responses retain deprecated objects and graph edges. Version updates exclude
+deprecated successor bundles; channel updates exclude deprecated destination
+channels and terminal bundles. Existing current-state behavior is preserved,
+and reachable version queries can traverse deprecated intermediate bundles.
+Deprecation messages and package-level deprecation state are not exposed;
+package-level declarations do not mark child channels or bundles deprecated.
+Invalid references or duplicate deprecation records for a package fail refresh
+and preserve the last known-good snapshot. Cancellation also discards the
+in-progress snapshot, including during deprecation application.
+
 For example:
 
 ```fish

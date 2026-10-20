@@ -160,3 +160,34 @@ func TestReadRejectsInvalidInputBeforeRegistryAccess(t *testing.T) {
 		})
 	}
 }
+
+// cancelOnOpenFS cancels after the walker commits to parsing a catalog file.
+// A file can contain many buffered records, so the callback must check context.
+type cancelOnOpenFS struct {
+	fstest.MapFS
+	cancel context.CancelFunc
+}
+
+func (f cancelOnOpenFS) Open(name string) (fs.File, error) {
+	file, err := f.MapFS.Open(name)
+	if err == nil && name == "catalog.json" {
+		f.cancel()
+	}
+	return file, err
+}
+
+func TestReadFSStopsParsingCanceledFile(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	configs := cancelOnOpenFS{
+		MapFS: fstest.MapFS{"catalog.json": {Data: []byte(`
+{"schema":"olm.deprecations","package":"example","entries":[]}
+{"schema":"olm.channel"}
+`)}},
+		cancel: cancel,
+	}
+	snapshot, err := (catalog.Reader{ParseConcurrency: 1}).ReadFS(ctx, catalog.Source{}, configs)
+	if snapshot != nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("ReadFS = %v, %v; want nil and context.Canceled", snapshot, err)
+	}
+}

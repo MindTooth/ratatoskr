@@ -2,9 +2,12 @@ package catalog
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/operator-framework/operator-registry/alpha/declcfg"
 )
 
 func TestParsePlatform(t *testing.T) {
@@ -117,5 +120,46 @@ func TestAddChannelMetaUsesNameField(t *testing.T) {
 	channel := snapshot.Packages["strimzi-kafka-operator"].Channels["stable"]
 	if channel == nil || channel.Name != "stable" {
 		t.Fatalf("channel = %#v, want stable", channel)
+	}
+}
+
+func TestReadExtractedDeprecations(t *testing.T) {
+	root := t.TempDir()
+	configs := filepath.Join(root, "configs")
+	if err := os.Mkdir(configs, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string]string{
+		"metadata.json": `{"schema":"olm.package","name":"example","defaultChannel":"stable"}
+{"schema":"olm.channel","package":"example","name":"stable","entries":[{"name":"v1"}]}
+{"schema":"olm.bundle","package":"example","name":"v1","properties":[{"type":"olm.package","value":{"version":"1.0.0"}}]}`,
+		"deprecations.json": `{"schema":"olm.deprecations","package":"example","entries":[{"reference":{"schema":"olm.channel","name":"stable"},"message":"notice"},{"reference":{"schema":"olm.bundle","name":"v1"},"message":"notice"}]}`,
+	} {
+		if err := os.WriteFile(filepath.Join(configs, name), []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot, err := (Reader{}).readExtracted(context.Background(), Source{ID: "local"}, root, "/configs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := snapshot.Packages["example"]
+	if !p.Channels["stable"].Deprecated || !p.Bundles["v1"].Deprecated {
+		t.Fatal("extracted catalog lost deprecation flags")
+	}
+}
+
+func TestDeprecationApplicationHonorsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	snapshot := &Snapshot{Packages: map[string]*Package{
+		"example": {Bundles: map[string]*Bundle{"v1": {Name: "v1"}}},
+	}}
+	records := deprecationRecords{"example": {{Schema: declcfg.SchemaBundle, Name: "v1"}}}
+	if err := records.apply(ctx, snapshot); !errors.Is(err, context.Canceled) {
+		t.Fatalf("apply = %v, want context.Canceled", err)
+	}
+	if snapshot.Packages["example"].Bundles["v1"].Deprecated {
+		t.Fatal("canceled deprecation application changed metadata")
 	}
 }
