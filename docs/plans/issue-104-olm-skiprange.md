@@ -179,7 +179,7 @@ isolated Go program; they are not inferred from generic SemVer range conventions
 | `>1.0.0 <=2.0.0` | Excludes 1.0.0; includes 2.0.0. |
 | `=1.2.3+build.1` | Matches 1.2.3 and 1.2.3+other. |
 | Space-separated constraints; spaced operators | AND; ordinary ASCII spaces are tolerated. |
-| `<1.0.0 || >=2.0.0` | OR, with AND binding more tightly. |
+| `<1.0.0 \|\| >=2.0.0` | OR, with AND binding more tightly. |
 | `1.x`, `1.2.x` | Supported lowercase wildcards. |
 | `^1.0.0`, `~1.0.0`, comma clauses, parentheses | Rejected. |
 | `>=v1.0.0`, `>=1.0`, `*`, `x`, `1.X`, `1.*` | Rejected. |
