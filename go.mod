@@ -4,6 +4,7 @@ go 1.26.3
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
+	github.com/blang/semver/v4 v4.0.0
 	github.com/operator-framework/operator-registry v1.74.0
 	go.podman.io/image/v5 v5.42.0
 	go.yaml.in/yaml/v3 v3.0.5
@@ -23,7 +24,6 @@ require (
 	github.com/VividCortex/ewma v1.2.0 // indirect
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
-	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/containerd/cgroups/v3 v3.1.2 // indirect

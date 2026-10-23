@@ -1,9 +1,131 @@
 package catalog
 
 import (
+	"reflect"
 	"sort"
 	"testing"
 )
+
+func TestRangeMatchesOLM(t *testing.T) {
+	for _, tc := range []struct {
+		expr, version string
+		want          bool
+	}{
+		{">=1.0.0 <2.0.0", "0.9.9", false},
+		{">=1.0.0 <2.0.0", "1.0.0-rc.1", false},
+		{">=1.0.0 <2.0.0", "1.0.0", true},
+		{">=1.0.0 <2.0.0", "1.5.0-beta.1", true},
+		{">=1.0.0 <2.0.0", "2.0.0-rc.1", true},
+		{">=1.0.0 <2.0.0", "2.0.0", false},
+		{">1.0.0 <=2.0.0", "1.0.0", false},
+		{">1.0.0 <=2.0.0", "2.0.0", true},
+		{">=1.0.0-0 <2.0.0-0", "1.0.0-rc.1", true},
+		{">=1.0.0-0 <2.0.0-0", "2.0.0-0", false},
+		{">=1.0.0-0 <2.0.0-0", "2.0.0-rc.1", false},
+		{"=1.2.3+build.1", "1.2.3+other", true},
+		{"!=1.2.3", "1.2.3+other", false},
+		{">=1.0.0 <1.2.0 || >=1.3.0 <2.0.0", "1.1.0", true},
+		{">=1.0.0 <1.2.0 || >=1.3.0 <2.0.0", "1.2.0", false},
+		{">=1.0.0 <1.2.0 || >=1.3.0 <2.0.0", "1.3.0", true},
+		{"  >= 1.0.0  < 2.0.0  ", "1.1.0", true},
+		{"1.x", "1.2.3", true},
+		{"1.2.x", "1.2.3", true},
+		{"1.2.x", "1.3.0", false},
+		{"1.0.0 - 2.0.0", "1.5.0", false},
+		{"^1.0.0", "1.1.0", false},
+		{"~1.0.0", "1.0.1", false},
+		{">=1.0.0, <2.0.0", "1.1.0", false},
+		{">=1.0", "1.1.0", false},
+		{"1.*", "1.1.0", false},
+		{"1.X", "1.1.0", false},
+		{">=1.0.0||<2.0.0", "1.1.0", false},
+		{">=1.0.0 || || <2.0.0", "0.9.0", false},
+		{">=1.0.0 || || <2.0.0", "1.1.0", false},
+		{">=1.0.0 || x || <2.0.0", "0.9.0", false},
+		{">=1.0.0 || x || <2.0.0", "1.1.0", false},
+		{">=1.0.0 || | || <2.0.0", "0.9.0", false},
+		{">=1.0.0 || | || <2.0.0", "1.1.0", false},
+		{"", "1.0.0", false},
+		{" ", "1.0.0", false},
+		{">=1.0.0", "", false},
+		{">=1.0.0", "v1.2.3", false},
+		{">=1.0.0", "1.2", false},
+		{">=1.0.0", "01.2.3", false},
+		{">=1.0.0", "1.2.3-01", false},
+		{">=1.0.0", " 1.2.3 ", false},
+	} {
+		t.Run(tc.expr+"/"+tc.version, func(t *testing.T) {
+			if got := rangeMatches(tc.expr, tc.version); got != tc.want {
+				t.Fatalf("rangeMatches(%q, %q) = %t, want %t", tc.expr, tc.version, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSkipRangeGraphQueries(t *testing.T) {
+	for _, tc := range []struct {
+		name, expr, current string
+		matches             bool
+	}{
+		{"lower boundary", ">=1.0.0 <2.0.0", "1.0.0", true},
+		{"before lower boundary", ">=1.0.0 <2.0.0", "1.0.0-rc.1", false},
+		{"prerelease", ">=1.0.0 <2.0.0", "1.5.0-beta.1", true},
+		{"before upper boundary", ">=1.0.0 <2.0.0", "2.0.0-rc.1", true},
+		{"upper boundary", ">=1.0.0 <2.0.0", "2.0.0", false},
+		{"OR second branch", ">=1.0.0 <1.2.0 || >=1.3.0 <2.0.0", "1.3.0", true},
+		{"OR gap", ">=1.0.0 <1.2.0 || >=1.3.0 <2.0.0", "1.2.0", false},
+		{"unsupported caret", "^1.0.0", "1.1.0", false},
+		{"unsafe OR", ">=1.0.0 || || <2.0.0", "0.9.0", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &Package{DefaultChannel: "stable", Bundles: map[string]*Bundle{
+				"current": {Name: "current", Version: tc.current},
+				"first":   {Name: "first", Version: "3.0.0"},
+				"head":    {Name: "head", Version: "4.0.0"},
+			}, Channels: map[string]*Channel{
+				"stable": {Name: "stable", Entries: []Entry{{Name: "current"}, {Name: "first", SkipRange: tc.expr}, {Name: "head", Replaces: "first"}}},
+				"next":   {Name: "next", Entries: []Entry{{Name: "first", SkipRange: tc.expr}, {Name: "head", Replaces: "first"}}},
+			}}
+			for _, mode := range []string{"direct", "reachable"} {
+				want := []string{tc.current}
+				if tc.matches {
+					want = append(want, "3.0.0")
+					if mode == "reachable" {
+						want = append(want, "4.0.0")
+					}
+				}
+				got, err := p.VersionUpdates(UpdateRequest{CurrentVersion: tc.current, Mode: mode})
+				if err != nil || !reflect.DeepEqual(got, want) {
+					t.Fatalf("VersionUpdates(%s) = %v, %v; want %v", mode, got, err, want)
+				}
+			}
+			for _, selection := range []string{"next", "reachable"} {
+				req := ChannelUpdateRequest{CurrentChannel: "stable", CurrentBundle: "current", Selection: selection}
+				want := []ChannelRelease{{Channel: "stable", Bundle: "current"}}
+				wantChannels := []string{"stable"}
+				if tc.matches {
+					want = append(want, ChannelRelease{Channel: "next", Bundle: "head"})
+					wantChannels = append(wantChannels, "next")
+				}
+				got, err := p.ChannelReleases(req)
+				if err != nil || !reflect.DeepEqual(got, want) {
+					t.Fatalf("ChannelReleases(%s) = %v, %v; want %v", selection, got, err, want)
+				}
+				channels, err := p.ChannelUpdates(req)
+				if err != nil || !reflect.DeepEqual(channels, wantChannels) {
+					t.Fatalf("ChannelUpdates(%s) = %v, %v; want %v", selection, channels, err, wantChannels)
+				}
+			}
+			wantHeads := []*Bundle{p.Bundles["head"]}
+			if !tc.matches {
+				wantHeads = append([]*Bundle{p.Bundles["current"]}, wantHeads...)
+			}
+			if got := p.ChannelHeads("stable"); !reflect.DeepEqual(got, wantHeads) {
+				t.Fatalf("ChannelHeads = %v, want %v", got, wantHeads)
+			}
+		})
+	}
+}
 
 func TestVersionUpdatesOnlyReturnsDeclaredPath(t *testing.T) {
 	p := &Package{Name: "gitops", DefaultChannel: "stable", Bundles: map[string]*Bundle{

@@ -69,6 +69,8 @@ type Bundle struct {
 
 // Reader loads catalog metadata from an OCI image or a file-based catalog.
 // Its zero value uses the default image signature policy and two parsing workers.
+// Nonempty skipRange expressions must parse with github.com/blang/semver/v4
+// and contain no unsafe empty OR branches; invalid ranges fail the entire read.
 // Deprecation records are applied after all metadata is loaded, independent of
 // record or file order. Only channel and bundle deprecation flags are retained;
 // package-level notices and deprecation messages are not exposed.
@@ -152,6 +154,7 @@ func (r Reader) readExtracted(ctx context.Context, source Source, root, configs 
 // ReadFS reads an unpacked file-based catalog rooted at configs. Source is
 // retained as snapshot metadata; it is not pulled or validated. Parsing uses
 // the same concurrency and normalization as Read, without registry access.
+// Invalid skipRange expressions return an error and no partial snapshot.
 // Callers are responsible for confining access through the supplied filesystem.
 // Catalog files must be regular files; directories and links to regular files are allowed.
 // The filesystem must implement fs.StatFS and report metadata without opening files.
@@ -373,6 +376,13 @@ func addMeta(s *Snapshot, schema string, blob []byte) error {
 		}
 		if v.Package == "" || v.Name == "" {
 			return fmt.Errorf("channel metadata is incomplete")
+		}
+		for _, entry := range v.Entries {
+			if entry.SkipRange != "" {
+				if _, err := parseSkipRange(entry.SkipRange); err != nil {
+					return fmt.Errorf("channel %q in package %q entry %q has invalid skipRange %q: %w", v.Name, v.Package, entry.Name, entry.SkipRange, err)
+				}
+			}
 		}
 		p := ensurePackage(s, v.Package)
 		p.Channels[v.Name] = &Channel{Name: v.Name, Entries: v.Entries}

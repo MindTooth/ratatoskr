@@ -150,6 +150,15 @@ Invalid references or duplicate deprecation records for a package fail refresh
 and preserve the last known-good snapshot. Cancellation also discards the
 in-progress snapshot, including during deprecation application.
 
+Nonempty channel-entry `skipRange` expressions use the OLM-compatible
+`github.com/blang/semver/v4` parser. Parser errors and unsafe empty OR branches
+fail the entire catalog refresh, preserving the last known-good snapshot and
+its original age under the configured freshness policy. Empty or absent ranges
+declare no range edge. Caret (`^`) and tilde (`~`) constraints are unsupported.
+For both version updates and channel transitions, a bounded range such as
+`>=1.0.0 <2.0.0` includes `1.0.0` and `2.0.0-rc.1`, but excludes
+`1.0.0-rc.1` and `2.0.0`; build metadata does not affect precedence.
+
 For example:
 
 ```fish

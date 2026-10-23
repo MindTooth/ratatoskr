@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
+	blang "github.com/blang/semver/v4"
 )
 
 // ErrNoUpdatePath means that the installed release has no entry in the
@@ -307,18 +308,39 @@ func rangeMatches(expr, version string) bool {
 	if expr == "" || version == "" {
 		return false
 	}
-	v, err := semver.StrictNewVersion(version)
+	v, err := blang.Parse(version)
 	if err != nil {
 		return false
 	}
-	r, err := semver.NewConstraint(expr)
+	r, err := parseSkipRange(expr)
 	if err != nil {
 		return false
 	}
-	// OLM skip ranges match semantic prereleases. Masterminds excludes them
-	// by default, so opt in to the established catalog behavior.
-	r.IncludePrerelease = true
-	return r.Check(v)
+	return r(v)
+}
+
+// parseSkipRange uses OLM's parser without allowing unsafe empty OR branches.
+func parseSkipRange(expr string) (blang.Range, error) {
+	r, err := blang.ParseRange(expr)
+	if err != nil {
+		return nil, err
+	}
+	if r == nil {
+		return nil, errors.New("skipRange has no constraints")
+	}
+	// blang v4.0.0 accepts empty or token-dropped OR branches whose predicates panic.
+	if strings.Contains(expr, "||") {
+		for _, clause := range strings.Split(expr, "||") {
+			part, err := blang.ParseRange(clause)
+			if err != nil {
+				return nil, fmt.Errorf("invalid skipRange OR clause: %w", err)
+			}
+			if part == nil {
+				return nil, errors.New("skipRange OR clause has no constraints")
+			}
+		}
+	}
+	return r, nil
 }
 
 // sortVersions sorts semantic versions in ascending order, followed by invalid
