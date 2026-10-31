@@ -7,7 +7,7 @@ require (
 	github.com/blang/semver/v4 v4.0.0
 	github.com/operator-framework/operator-registry v1.74.0
 	go.podman.io/image/v5 v5.42.0
-	go.yaml.in/yaml/v3 v3.0.5
+	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.49.0
 	k8s.io/apimachinery v0.37.2
