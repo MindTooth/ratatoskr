@@ -6,7 +6,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/blang/semver/v4 v4.0.0
 	github.com/operator-framework/operator-registry v1.74.0
-	go.podman.io/image/v5 v5.42.0
+	go.podman.io/image/v5 v5.42.1
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.50.0
@@ -117,7 +117,7 @@ require (
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.podman.io/common v0.69.0 // indirect
-	go.podman.io/storage v1.65.0 // indirect
+	go.podman.io/storage v1.65.1 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
