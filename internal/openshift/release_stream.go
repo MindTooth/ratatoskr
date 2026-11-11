@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Masterminds/semver/v3"
+	"github.com/blang/semver/v4"
 )
 
 const maxReleaseControllerBytes = 8 << 20
@@ -164,28 +164,28 @@ func (c Client) fetchReleaseControllerTags(ctx context.Context, baseURL, stream 
 }
 
 func streamReleasesBetween(tags []releaseControllerTag, from, to string) []releaseStreamRelease {
-	fromVersion, fromErr := semver.StrictNewVersion(from)
-	toVersion, toErr := semver.StrictNewVersion(to)
-	if fromErr != nil || toErr != nil || !fromVersion.LessThan(toVersion) {
+	fromVersion, fromErr := semver.Parse(from)
+	toVersion, toErr := semver.Parse(to)
+	if fromErr != nil || toErr != nil || !fromVersion.LT(toVersion) {
 		return nil
 	}
 	accepted := make([]string, 0, len(tags))
 	for _, tag := range tags {
-		version, err := semver.StrictNewVersion(tag.Name)
-		if tag.Phase == "Accepted" && err == nil && version.Prerelease() == "" {
+		version, err := semver.Parse(tag.Name)
+		if tag.Phase == "Accepted" && err == nil && len(version.Pre) == 0 {
 			accepted = append(accepted, tag.Name)
 		}
 	}
 	sort.Slice(accepted, func(i, j int) bool {
-		left, _ := semver.StrictNewVersion(accepted[i])
-		right, _ := semver.StrictNewVersion(accepted[j])
-		return left.LessThan(right)
+		left, _ := semver.Parse(accepted[i])
+		right, _ := semver.Parse(accepted[j])
+		return left.LT(right)
 	})
 
 	entries := make([]releaseStreamRelease, 0, len(accepted))
 	for _, tag := range accepted {
-		version, _ := semver.StrictNewVersion(tag)
-		if fromVersion.LessThan(version) && !toVersion.LessThan(version) {
+		version, _ := semver.Parse(tag)
+		if fromVersion.LT(version) && !toVersion.LT(version) {
 			entries = append(entries, releaseStreamRelease{version: tag})
 		}
 	}
@@ -195,9 +195,9 @@ func streamReleasesBetween(tags []releaseControllerTag, from, to string) []relea
 func latestVersion(releases []Release) string {
 	latest := releases[0].Version
 	for _, release := range releases[1:] {
-		left, leftErr := semver.StrictNewVersion(latest)
-		right, rightErr := semver.StrictNewVersion(release.Version)
-		if leftErr == nil && rightErr == nil && left.LessThan(right) {
+		left, leftErr := semver.Parse(latest)
+		right, rightErr := semver.Parse(release.Version)
+		if leftErr == nil && rightErr == nil && left.LT(right) {
 			latest = release.Version
 		}
 	}

@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Masterminds/semver/v3"
+	"github.com/blang/semver/v4"
 )
 
 const (
@@ -199,10 +199,10 @@ func releaseFromNode(n node) Release {
 
 func sortReleases(releases []Release) {
 	sort.SliceStable(releases, func(i, j int) bool {
-		left, leftErr := semver.StrictNewVersion(releases[i].Version)
-		right, rightErr := semver.StrictNewVersion(releases[j].Version)
+		left, leftErr := semver.Parse(releases[i].Version)
+		right, rightErr := semver.Parse(releases[j].Version)
 		if leftErr == nil && rightErr == nil {
-			return left.LessThan(right)
+			return left.LT(right)
 		}
 		return releases[i].Version < releases[j].Version
 	})
