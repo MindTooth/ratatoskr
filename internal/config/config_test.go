@@ -127,6 +127,20 @@ catalogs: [community, redhat]
 	}
 }
 
+func TestParseAcceptsStringChannelForms(t *testing.T) {
+	for _, channels := range []string{`["v4.22"]`, `['4.22']`, `[!!str 4.22]`, "\n  - |-\n    4.22"} {
+		t.Run(channels, func(t *testing.T) {
+			cfg, err := Parse([]byte("catalogs: [redhat]\nchannels: " + channels))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(cfg.Service.Sources) != 1 || cfg.Service.Sources[0].ID != "redhat-v4.22" {
+				t.Fatalf("sources = %#v, want only redhat-v4.22", cfg.Service.Sources)
+			}
+		})
+	}
+}
+
 func TestExplicitSourcesReplaceOrExtendGeneratedSources(t *testing.T) {
 	cfg, err := Parse([]byte(`
 channels: ["4.22"]
@@ -205,6 +219,18 @@ func TestParseRejectsInvalidConfiguration(t *testing.T) {
 		{name: "zero refresh timeout", yaml: "refreshTimeout: 0s\nchannels: [v4.22]", message: "refreshTimeout must be greater than 0"},
 		{name: "negative refresh timeout", yaml: "refreshTimeout: -1s\nchannels: [v4.22]", message: "refreshTimeout must be greater than 0"},
 		{name: "multiple documents", yaml: "channels: [v4.22]\n---\nchannels: [v4.23]", message: "multiple YAML documents"},
+		{name: "trailing empty document", yaml: "channels: [v4.22]\n---\n", message: "multiple YAML documents"},
+		{name: "invalid trailing document", yaml: "channels: [v4.22]\n---\n{", message: "decode configuration"},
+		{name: "empty input", yaml: "", message: "decode configuration"},
+		{name: "comment-only input", yaml: "# nothing here\n", message: "decode configuration"},
+		{name: "syntax error", yaml: "channels: [v4.22", message: "decode configuration"},
+		{name: "duplicate key", yaml: "channels: [v4.22]\nchannels: [v4.23]", message: `mapping key "channels" already defined`},
+		{name: "unknown source field", yaml: "sources:\n  - {id: x, image: example/x, bogus: 1}", message: "field bogus not found"},
+		{name: "boolean channel", yaml: `channels: [true]`, message: "quote versions"},
+		{name: "mapping channel", yaml: `channels: [{a: b}]`, message: "quote versions"},
+		{name: "scalar channels", yaml: `channels: v4.22`, message: "decode configuration"},
+		{name: "non-integer concurrency", yaml: "parseConcurrency: abc\nchannels: [v4.22]", message: "`abc`"},
+		{name: "top-level sequence", yaml: "- channels: [v4.22]", message: "!!seq"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
