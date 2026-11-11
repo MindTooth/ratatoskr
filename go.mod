@@ -3,7 +3,6 @@ module github.com/MindTooth/ratatoskr
 go 1.26.3
 
 require (
-	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/blang/semver/v4 v4.0.0
 	github.com/operator-framework/operator-registry v1.74.0
 	go.podman.io/image/v5 v5.42.1
@@ -18,6 +17,7 @@ require (
 	cel.dev/expr v0.25.2 // indirect
 	cyphar.com/go-pathrs v0.2.5 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
+	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/Microsoft/go-winio v0.6.3-0.20260930231756-f19d9717deb0 // indirect
 	github.com/Microsoft/hcsshim v0.13.0 // indirect
 	github.com/ProtonMail/go-crypto v1.5.2 // indirect
