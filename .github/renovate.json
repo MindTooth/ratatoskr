@@ -5,6 +5,8 @@
 
   "enabledManagers": ["dockerfile", "github-actions", "gomod", "npm"],
 
+  "postUpdateOptions": ["gomodUpdateImportPaths", "gomodTidy"],
+
   "packageRules": [
     {
       "description": "Group Red Hat UBI image updates",
